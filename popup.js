@@ -239,14 +239,44 @@ async function importFrom(text) {
   }
 }
 
-function onFileChosen(event) {
-  const file = event.target.files && event.target.files[0];
-  if (!file) return;
+function readFile(file) {
   const reader = new FileReader();
   reader.onload = () => importFrom(String(reader.result || ""));
   reader.onerror = () => setStatus("Could not read that file.", "err");
   reader.readAsText(file);
+}
+
+function onFileChosen(event) {
+  const file = event.target.files && event.target.files[0];
+  if (file) readFile(file);
   event.target.value = "";
+}
+
+function setupDropzone() {
+  const zone = $("dropzone");
+  if (!zone) return;
+  const stop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  ["dragenter", "dragover"].forEach((evt) =>
+    zone.addEventListener(evt, (e) => {
+      stop(e);
+      zone.classList.add("dragover");
+    })
+  );
+  ["dragleave", "dragend"].forEach((evt) =>
+    zone.addEventListener(evt, (e) => {
+      stop(e);
+      zone.classList.remove("dragover");
+    })
+  );
+  zone.addEventListener("drop", (e) => {
+    stop(e);
+    zone.classList.remove("dragover");
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) readFile(file);
+  });
 }
 
 function onImportText() {
@@ -260,5 +290,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("exportCopy").addEventListener("click", exportToClipboard);
   $("importFile").addEventListener("change", onFileChosen);
   $("importTextBtn").addEventListener("click", onImportText);
+  setupDropzone();
+  ["dragover", "drop"].forEach((evt) =>
+    window.addEventListener(evt, (e) => e.preventDefault())
+  );
   refreshSummary();
 });
