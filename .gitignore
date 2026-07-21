@@ -1,0 +1,19 @@
+# Build / packaging output
+dist/
+*.zip
+*.crx
+*.pem
+
+# Dependencies
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*~

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Suspended tab</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    .wrap {
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      max-width: 560px;
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      font-size: 12px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 4px 12px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 10px;
+      word-break: break-word;
+    }
+    .url {
+      color: #94a3b8;
+      font-size: 13px;
+      word-break: break-all;
+      margin-bottom: 22px;
+    }
+    button {
+      appearance: none;
+      border: none;
+      background: #3b82f6;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 11px 22px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button:hover { background: #2563eb; }
+    .tip { margin-top: 14px; font-size: 12px; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="badge">Suspended tab</div>
+      <h1 id="title">Loading…</h1>
+      <div class="url" id="url"></div>
+      <button id="restore">Load this page</button>
+      <div class="tip">This tab loads automatically when you open it.</div>
+    </div>
+  </div>
+  <script src="suspended.js"></script>
+</body>
+</html>

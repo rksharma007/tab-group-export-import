@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Group Tabs – Export & Restore</title>
+</head>
+<body>
+  <header>
+    <h1>Tab Groups</h1>
+    <p class="subtitle">Export &amp; import grouped tabs</p>
+  </header>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Export</h2>
+      <span id="summary" class="pill">…</span>
+    </div>
+    <p class="hint">Saves every tab group (name, color &amp; links) from all open windows.</p>
+    <div class="btn-row">
+      <button id="exportFile" class="btn primary">Download JSON</button>
+      <button id="exportCopy" class="btn">Copy JSON</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Import</h2>
+    </div>
+    <p class="hint">Recreates the groups from a file you exported earlier.</p>
+
+    <label class="file-label" for="importFile">
+      <span>Choose a .json file…</span>
+      <input type="file" id="importFile" accept="application/json,.json" />
+    </label>
+
+    <details class="advanced">
+      <summary>Or paste JSON text</summary>
+      <textarea id="importText" placeholder="Paste exported JSON here"></textarea>
+      <button id="importTextBtn" class="btn">Import from text</button>
+    </details>
+
+    <div class="options">
+      <label class="check">
+        <input type="checkbox" id="optNewWindow" checked />
+        <span>Open in a new window</span>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="optLazy" checked />
+        <span>Load tabs lazily <em>(recommended for many tabs)</em></span>
+      </label>
+    </div>
+  </section>
+
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <footer>
+    <span>Works in Chrome &amp; Edge</span>
+  </footer>
+
+  <script src="popup.js"></script>
+</body>
+</html>
