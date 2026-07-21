@@ -327,3 +327,8 @@ textarea:focus {
 .status.busy {
   color: var(--muted);
 }
+
+.support {
+  text-align: right;
+  padding: 0 16px 14px;
+}
