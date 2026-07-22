@@ -16,7 +16,17 @@ function normalizeColor(color) {
   return COLORS.includes(color) ? color : "grey";
 }
 
-async function collectGroups() {
+// Empty/new-tab pages carry no useful state, so they are dropped from exports.
+function isBlankTab(url) {
+  return (
+    !url ||
+    /^about:(blank|newtab)/i.test(url) ||
+    /^(chrome|edge):\/\/(newtab|new-tab-page)\/?/i.test(url)
+  );
+}
+
+async function collectGroups(options = {}) {
+  const includeUngrouped = options.includeUngrouped === true;
   const groups = await chrome.tabGroups.query({});
   const meta = new Map(groups.map((g) => [g.id, g]));
   const windows = await chrome.windows.getAll({ populate: true });
@@ -24,11 +34,16 @@ async function collectGroups() {
   const result = [];
   let groupCount = 0;
   let tabCount = 0;
+  let ungroupedCount = 0;
 
   for (const win of windows) {
     const buckets = new Map();
+    const loose = [];
     for (const tab of win.tabs || []) {
-      if (tab.groupId == null || tab.groupId === NONE) continue;
+      if (tab.groupId == null || tab.groupId === NONE) {
+        if (includeUngrouped) loose.push(tab);
+        continue;
+      }
       if (!buckets.has(tab.groupId)) buckets.set(tab.groupId, []);
       buckets.get(tab.groupId).push(tab);
     }
@@ -51,10 +66,26 @@ async function collectGroups() {
       tabCount += links.length;
     }
 
-    if (windowGroups.length) result.push({ groups: windowGroups });
+    const ungrouped = includeUngrouped
+      ? loose
+          .sort((a, b) => a.index - b.index)
+          .map((t) => {
+            const link = { url: t.url || t.pendingUrl || "", title: t.title || "" };
+            if (t.pinned) link.pinned = true;
+            return link;
+          })
+          .filter((t) => !isBlankTab(t.url))
+      : [];
+    ungroupedCount += ungrouped.length;
+
+    if (windowGroups.length || ungrouped.length) {
+      const entry = { groups: windowGroups };
+      if (ungrouped.length) entry.ungrouped = ungrouped;
+      result.push(entry);
+    }
   }
 
-  return { windows: result, groupCount, tabCount };
+  return { windows: result, groupCount, tabCount, ungroupedCount };
 }
 
 function buildExport(windows) {
@@ -87,26 +118,45 @@ function pluralize(count, word) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
+function exportSummary(groupCount, tabCount, ungroupedCount) {
+  const parts = [];
+  if (groupCount) parts.push(`${pluralize(groupCount, "group")} (${pluralize(tabCount, "tab")})`);
+  if (ungroupedCount) parts.push(pluralize(ungroupedCount, "ungrouped tab"));
+  return parts.join(" and ");
+}
+
 async function refreshSummary() {
   try {
-    const { groupCount, tabCount } = await collectGroups();
-    $("summary").textContent = `${pluralize(groupCount, "group")} · ${pluralize(tabCount, "tab")}`;
-    const empty = groupCount === 0;
-    $("exportFile").disabled = empty;
-    $("exportCopy").disabled = empty;
-    if (empty) setStatus("No tab groups are open right now.", "warn");
+    const includeUngrouped = $("optUngrouped").checked;
+    const { groupCount, tabCount, ungroupedCount } = await collectGroups({ includeUngrouped });
+    let text = `${pluralize(groupCount, "group")} · ${pluralize(tabCount, "tab")}`;
+    if (includeUngrouped && ungroupedCount) text += ` · ${ungroupedCount} ungrouped`;
+    $("summary").textContent = text;
+
+    const nothing = groupCount === 0 && !(includeUngrouped && ungroupedCount > 0);
+    $("exportFile").disabled = nothing;
+    $("exportCopy").disabled = nothing;
+    if (nothing) {
+      setStatus(
+        includeUngrouped ? "No groups or ungrouped tabs to export." : "No tab groups are open right now.",
+        "warn"
+      );
+    } else if ($("status").classList.contains("warn")) {
+      setStatus("");
+    }
   } catch (err) {
     $("summary").textContent = "—";
-    setStatus("Could not read tab groups: " + err.message, "err");
+    setStatus("Could not read tabs: " + err.message, "err");
   }
 }
 
 async function exportToFile() {
   try {
-    const { windows, groupCount, tabCount } = await collectGroups();
-    if (!groupCount) return setStatus("Nothing to export.", "warn");
+    const includeUngrouped = $("optUngrouped").checked;
+    const { windows, groupCount, tabCount, ungroupedCount } = await collectGroups({ includeUngrouped });
+    if (!groupCount && !ungroupedCount) return setStatus("Nothing to export.", "warn");
     saveFile(JSON.stringify(buildExport(windows), null, 2), exportFileName());
-    setStatus(`Saved ${pluralize(groupCount, "group")} (${pluralize(tabCount, "tab")}) to your downloads.`, "ok");
+    setStatus(`Saved ${exportSummary(groupCount, tabCount, ungroupedCount)} to your downloads.`, "ok");
   } catch (err) {
     setStatus("Export failed: " + err.message, "err");
   }
@@ -114,10 +164,11 @@ async function exportToFile() {
 
 async function exportToClipboard() {
   try {
-    const { windows, groupCount, tabCount } = await collectGroups();
-    if (!groupCount) return setStatus("Nothing to export.", "warn");
+    const includeUngrouped = $("optUngrouped").checked;
+    const { windows, groupCount, tabCount, ungroupedCount } = await collectGroups({ includeUngrouped });
+    if (!groupCount && !ungroupedCount) return setStatus("Nothing to export.", "warn");
     await navigator.clipboard.writeText(JSON.stringify(buildExport(windows), null, 2));
-    setStatus(`Copied ${pluralize(groupCount, "group")} (${pluralize(tabCount, "tab")}) to the clipboard.`, "ok");
+    setStatus(`Copied ${exportSummary(groupCount, tabCount, ungroupedCount)} to the clipboard.`, "ok");
   } catch (err) {
     setStatus("Copy failed: " + err.message, "err");
   }
@@ -160,11 +211,12 @@ async function openTab(windowId, url, title, lazy) {
 }
 
 async function restore(data, options) {
-  const stats = { windows: 0, groups: 0, tabs: 0, skipped: 0 };
+  const stats = { windows: 0, groups: 0, tabs: 0, ungrouped: 0, skipped: 0 };
 
   for (const win of data.windows) {
     const groups = win.groups || [];
-    if (!groups.length) continue;
+    const ungrouped = win.ungrouped || [];
+    if (!groups.length && !ungrouped.length) continue;
 
     let windowId;
     let blankTabId = null;
@@ -187,7 +239,7 @@ async function restore(data, options) {
         } else {
           tabIds.push(id);
           stats.tabs += 1;
-          setStatus(`Restoring… ${pluralize(stats.tabs, "tab")}`, "busy");
+          setStatus(`Restoring… ${pluralize(stats.tabs + stats.ungrouped, "tab")}`, "busy");
         }
       }
       if (!tabIds.length) continue;
@@ -203,6 +255,24 @@ async function restore(data, options) {
         // Styling is cosmetic; a failure here should not abort the restore.
       }
       stats.groups += 1;
+    }
+
+    for (const tab of ungrouped) {
+      if (!tab || !tab.url) continue;
+      const id = await openTab(windowId, tab.url, tab.title, options.lazy);
+      if (id == null) {
+        stats.skipped += 1;
+        continue;
+      }
+      stats.ungrouped += 1;
+      if (tab.pinned) {
+        try {
+          await chrome.tabs.update(id, { pinned: true });
+        } catch {
+          // Pinning is best-effort and never aborts the restore.
+        }
+      }
+      setStatus(`Restoring… ${pluralize(stats.tabs + stats.ungrouped, "tab")}`, "busy");
     }
 
     if (blankTabId != null) {
@@ -227,7 +297,10 @@ async function importFrom(text) {
       newWindow: $("optNewWindow").checked,
       lazy: $("optLazy").checked,
     });
-    let message = `Restored ${pluralize(stats.groups, "group")} (${pluralize(stats.tabs, "tab")})`;
+    const parts = [];
+    if (stats.groups) parts.push(`${pluralize(stats.groups, "group")} (${pluralize(stats.tabs, "tab")})`);
+    if (stats.ungrouped) parts.push(pluralize(stats.ungrouped, "ungrouped tab"));
+    let message = "Restored " + (parts.join(" and ") || "nothing");
     if (stats.windows) message += ` in ${pluralize(stats.windows, "new window")}`;
     message += ".";
     if (stats.skipped) message += ` ${pluralize(stats.skipped, "tab")} skipped.`;
@@ -288,6 +361,7 @@ function onImportText() {
 document.addEventListener("DOMContentLoaded", () => {
   $("exportFile").addEventListener("click", exportToFile);
   $("exportCopy").addEventListener("click", exportToClipboard);
+  $("optUngrouped").addEventListener("change", refreshSummary);
   $("importFile").addEventListener("change", onFileChosen);
   $("importTextBtn").addEventListener("click", onImportText);
   setupDropzone();
